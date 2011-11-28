@@ -1,0 +1,8 @@
+{
+	"name" : "Nodeslide",
+	"version" : "0.0.1",
+	"dependencies" : {
+		"now" : "0.7.6",
+		"express" : "2.2.0"
+	}
+}

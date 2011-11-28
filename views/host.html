@@ -1,0 +1,180 @@
+<!doctype html>
+<html>
+	<head>
+		<title>(HOST) Slide Sharing in Real Time</title>
+		
+		<script src="http://code.jquery.com/jquery-latest.js"></script>
+		<script src="/nowjs/now.js"></script>
+		<script>
+			$(function() {
+				now.ready(function() {
+					// we ensure jQuery and nowJS is initialized and ready by put the code in this context
+					
+					// get HTMl5 canvas handler
+					var c = document.getElementById("stage");
+					var ctx = c.getContext('2d');
+					// get HTML5 video handler
+					var v = document.getElementById("video");
+					// backing canva for video
+					var bc = document.createElement("canvas");
+					var bctx = bc.getContext('2d');
+					
+					// paint canva for drawing
+					var pc = document.createElement("canvas");
+					var pctx = pc.getContext('2d');
+					
+					
+					// to record if the video is playing or stopping
+					var videoPlayed = false;
+					
+					// trigger when the video is played
+					v.addEventListener("play", function() {
+						// mark this video is in playing mode
+						videoPlayed = true;
+						// re adjust the canvas width and height based on the video's one...
+						var w = v.clientWidth / 2;
+						var h = v.clientHeight / 2;
+						draw(this, ctx, w, h);
+					}, false);
+					
+					// trigger when the video is paused
+					v.addEventListener("pause", function() {
+						// mark this video is in not playing mode
+						videoPlayed = false;
+					}, false);
+					
+					// draw the video into HTML5 canvas
+					var draw = function(v, ctx, w, h) {
+						// if the video is not in playing, we not draw the screen
+						if(!videoPlayed) return;
+						
+						// re initialize the backing canvas
+						bctx.clearRect(0,0,w,h);
+						bctx.drawImage(v, 0, 0, w, h);
+						
+						// process bctx the backing canvas context
+						var bcxdata = bctx.getImageData(0, 0, w, h);
+						var bcdata = bcxdata.data;
+						for(var i = 0; i < bcdata.length; i+=4) {
+							
+							// modify the color pixels of the image data
+							
+							var r = bcdata[i];
+							var g = bcdata[i + 1];
+							var b = bcdata[i + 2];
+							
+							var isDirectManipulate = false;
+							
+							switch(algorithm) {
+								case 'brightness':
+								var brightness = (3 * r + 4 * g + b) >>> 3;
+								r = g = b = brightness;
+								break;
+								
+								case 'back':
+								r = 255 - r;
+								g = 255 - g;
+								b = 255 - b;
+								break;
+								
+								case 'emboss':
+								isDirectManipulate = true;
+								if( i%4 == 3 ) continue;
+      							  bcdata[i] = 127 + 2*bcdata[i] - bcdata[i + 4] - bcdata[i + w*4];
+								break;
+							}
+							
+							if(!isDirectManipulate) {
+								bcdata[i] 		= r;
+								bcdata[i + 1] 	= g;
+								bcdata[i + 2] 	= b;
+							}
+							
+						}
+						bcxdata.data = bcdata;
+						// then copy into main canva
+						ctx.putImageData(bcxdata, 0, 0);
+						
+						drawPath();
+						
+						broadcast(c);
+						
+						setTimeout(draw, 50, v, ctx, w, h);
+					};
+					
+					var broadcast = function(c) {
+						// broadcast this screen to client users
+						now.shareImage(c.toDataURL("image/png"));
+					};
+					
+					// algorithms
+					var algorithm = 'none';
+					
+					$("#algorithms").change(function() {
+						algorithm = $(this).val();
+					});
+					
+					// simple paint drawing code
+					var isMousedown = false;
+					
+					var startX = 0;
+					var startY = 0;
+					
+					var path = [];
+					$("#stage").mousedown(function(e) {
+						startX = e.clientX;
+						startY = e.clientY;
+						path[path.length] = {x: startX, y: startY};
+						isMousedown = true;	
+					});
+					
+					$("#stage").mouseup(function(e) {
+						isMousedown = false;
+					});
+					
+					$("#stage").mousemove(function(e) {
+						if(isMousedown) {
+							curX = e.clientX;
+							curY = e.clientY;
+							
+							path[path.length] = {x: curX, y:curY};
+						}
+					});
+					
+					
+					var drawPath = function() {
+						var w = c.clientWidth;
+						var h = c.clientHeight;
+						
+						
+						for(var i = 0; i < path.length; i++) {
+							var pas = path[i];
+							var px = pas.x;
+							var py = pas.y;
+							if(i == 0) {
+								ctx.moveTo(px, py);
+							} else {
+								ctx.lineTo(px, py);
+							}
+						}
+						ctx.stroke();
+						//path = [];
+					};
+				});
+			});
+		</script>
+	</head>
+	<body>
+		<canvas id="stage" width="600" height-"500">Your Browser not support HTML5 Canvas!</canvas>
+		<hr />
+		<video id="video" src="/static/video2.m4v" controls loop></video>
+		<br />
+		Algorithm:
+		<select id="algorithms">
+			<option value="none">None</option>
+			<option value="brightness">Brightness</option>
+			<option value="back">Back</option>
+			<option value="emboss">Emboss</option>
+		</select>
+	</body>
+</html>

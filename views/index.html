@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+	<head>
+		<title>(Client) Slide Sharing in Real Time</title>
+		<meta name="apple-mobile-web-app-capable" content="yes">
+
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+<meta name = "viewport" content = "width = 320, initial-scale = 0.5, user-scalable = no">
+		<script src="http://code.jquery.com/jquery-latest.js"></script>
+		<script src="/nowjs/now.js"></script>
+		<script>
+			$(function() {
+				now.ready(function() {
+					
+					// we ensure jQuery and nowJS is initialized and ready by put the code in this context
+					
+					// get the HTML5 canvas handler
+					var c = document.getElementById("stage");
+					var ctx = c.getContext('2d');
+					
+					// called from server - to update the image data just for this client page
+					// the data is a base64-encoded image
+					now.updateImage = function(data) {
+						
+						// create a blank HTML image, put the data into the image src
+						var img = new Image();
+						img.src = data;
+						// when the image loaded, draw the image on HTML5 canvas
+						img.addEventListener("load", function() {
+							ctx.drawImage(img, 0, 0);
+						});
+					};
+				});
+			});
+		</script>
+	</head>
+	<body>
+		<canvas id="stage" width="600" height-"500">Your Browser not support HTML5 Canvas!</canvas>
+		
+	</body>
+</html>
