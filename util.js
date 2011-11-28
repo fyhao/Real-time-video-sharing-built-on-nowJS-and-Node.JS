@@ -1,4 +1,7 @@
-
+/**
+ * Real Time Video Sharing built on nowJS and Node.JS
+ * Author: fyhao
+ */
 // utility library
 
 /**

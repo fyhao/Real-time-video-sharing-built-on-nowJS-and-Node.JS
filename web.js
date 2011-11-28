@@ -1,3 +1,8 @@
+/**
+ * Real Time Video Sharing built on nowJS and Node.JS
+ * Author: fyhao
+ */
+
 // include utility library
 var util = require('./util.js');
 
