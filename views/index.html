@@ -1,42 +1,305 @@
 <!doctype html>
 <html>
 	<head>
-		<title>(Client) Slide Sharing in Real Time</title>
+		<title>(Viewer) Real-time Video and Audio Sharing</title>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<meta name="apple-mobile-web-app-capable" content="yes">
-
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-
-<meta name = "viewport" content = "width = 320, initial-scale = 0.5, user-scalable = no">
-		<script src="http://code.jquery.com/jquery-latest.js"></script>
-		<script src="/nowjs/now.js"></script>
-		<script>
-			$(function() {
-				now.ready(function() {
-					
-					// we ensure jQuery and nowJS is initialized and ready by put the code in this context
-					
-					// get the HTML5 canvas handler
-					var c = document.getElementById("stage");
-					var ctx = c.getContext('2d');
-					
-					// called from server - to update the image data just for this client page
-					// the data is a base64-encoded image
-					now.updateImage = function(data) {
-						
-						// create a blank HTML image, put the data into the image src
-						var img = new Image();
-						img.src = data;
-						// when the image loaded, draw the image on HTML5 canvas
-						img.addEventListener("load", function() {
-							ctx.drawImage(img, 0, 0);
-						});
-					};
-				});
-			});
-		</script>
+		<meta name="apple-mobile-web-app-status-bar-style" content="black">
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				margin: 0;
+				padding: 20px;
+				background: #1a1a1a;
+				color: #fff;
+			}
+			h1 {
+				color: #fff;
+				text-align: center;
+			}
+			.container {
+				max-width: 1200px;
+				margin: 0 auto;
+			}
+			.video-container {
+				position: relative;
+				margin: 20px auto;
+				max-width: 100%;
+				background: #000;
+				border-radius: 8px;
+				overflow: hidden;
+				box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+			}
+			video {
+				width: 100%;
+				height: auto;
+				display: block;
+			}
+			.status {
+				padding: 15px;
+				margin: 20px 0;
+				border-radius: 4px;
+				background: #2196F3;
+				color: white;
+				text-align: center;
+				font-size: 16px;
+			}
+			.status.error {
+				background: #f44336;
+			}
+			.status.success {
+				background: #4CAF50;
+			}
+			.status.waiting {
+				background: #FF9800;
+			}
+			.info {
+				margin: 20px 0;
+				padding: 15px;
+				background: #333;
+				border-left: 4px solid #2196F3;
+				border-radius: 4px;
+			}
+			.controls {
+				text-align: center;
+				margin: 20px 0;
+			}
+			button {
+				padding: 12px 24px;
+				font-size: 16px;
+				margin: 5px;
+				cursor: pointer;
+				background: #2196F3;
+				color: white;
+				border: none;
+				border-radius: 4px;
+				transition: background 0.3s;
+			}
+			button:hover {
+				background: #1976D2;
+			}
+			button:disabled {
+				background: #666;
+				cursor: not-allowed;
+			}
+			.loading {
+				text-align: center;
+				padding: 40px;
+			}
+			.spinner {
+				border: 4px solid #333;
+				border-top: 4px solid #2196F3;
+				border-radius: 50%;
+				width: 40px;
+				height: 40px;
+				animation: spin 1s linear infinite;
+				margin: 0 auto;
+			}
+			@keyframes spin {
+				0% { transform: rotate(0deg); }
+				100% { transform: rotate(360deg); }
+			}
+		</style>
 	</head>
 	<body>
-		<canvas id="stage" width="600" height-"500">Your Browser not support HTML5 Canvas!</canvas>
-		
+		<div class="container">
+			<h1>📺 Viewer - Real-time Video and Audio Stream</h1>
+			
+			<div class="info">
+				<strong>Instructions:</strong>
+				<ul>
+					<li>This page will automatically connect to the host's stream</li>
+					<li>Make sure the host has started broadcasting at <code>/host</code></li>
+					<li>You will receive both video and audio in real-time</li>
+				</ul>
+			</div>
+			
+			<div class="status waiting" id="status">Connecting to server...</div>
+			
+			<div class="controls">
+				<button id="connectBtn">Connect to Stream</button>
+				<button id="disconnectBtn" style="display:none;">Disconnect</button>
+			</div>
+			
+			<div class="video-container" style="display:none;" id="videoContainer">
+				<video id="remoteVideo" autoplay playsinline controls></video>
+			</div>
+			
+			<div class="loading" id="loading" style="display:none;">
+				<div class="spinner"></div>
+				<p>Connecting to host...</p>
+			</div>
+		</div>
+
+		<script src="/socket.io/socket.io.js"></script>
+		<script>
+			(function() {
+				const socket = io();
+				const remoteVideo = document.getElementById('remoteVideo');
+				const statusDiv = document.getElementById('status');
+				const videoContainer = document.getElementById('videoContainer');
+				const loading = document.getElementById('loading');
+				const connectBtn = document.getElementById('connectBtn');
+				const disconnectBtn = document.getElementById('disconnectBtn');
+				
+				let peerConnection = null;
+				let hostId = null;
+				const configuration = {
+					iceServers: [
+						{ urls: 'stun:stun.l.google.com:19302' },
+						{ urls: 'stun:stun1.l.google.com:19302' }
+					]
+				};
+				
+				// Update status
+				function updateStatus(message, type = 'info') {
+					statusDiv.textContent = message;
+					statusDiv.className = 'status ' + type;
+					console.log(message);
+				}
+				
+				// Create peer connection and request stream from host
+				async function connectToHost() {
+					try {
+						updateStatus('Connecting to host...', 'waiting');
+						loading.style.display = 'block';
+						connectBtn.disabled = true;
+						
+						// Create new peer connection
+						peerConnection = new RTCPeerConnection(configuration);
+						
+						// Handle incoming tracks (video and audio)
+						peerConnection.ontrack = (event) => {
+							console.log('Received remote track:', event.track.kind);
+							if (remoteVideo.srcObject !== event.streams[0]) {
+								remoteVideo.srcObject = event.streams[0];
+								videoContainer.style.display = 'block';
+								loading.style.display = 'none';
+								updateStatus('✓ Connected - Receiving video and audio', 'success');
+								disconnectBtn.style.display = 'inline-block';
+								connectBtn.style.display = 'none';
+							}
+						};
+						
+						// Handle ICE candidates
+						peerConnection.onicecandidate = (event) => {
+							if (event.candidate) {
+								socket.emit('ice-candidate', {
+									candidate: event.candidate
+								});
+							}
+						};
+						
+						// Handle connection state changes
+						peerConnection.onconnectionstatechange = () => {
+							console.log('Connection state:', peerConnection.connectionState);
+							
+							switch (peerConnection.connectionState) {
+								case 'connected':
+									updateStatus('✓ Connected - Receiving stream', 'success');
+									break;
+								case 'disconnected':
+									updateStatus('Disconnected from host', 'waiting');
+									break;
+								case 'failed':
+									updateStatus('Connection failed. Please try reconnecting.', 'error');
+									disconnect();
+									break;
+								case 'closed':
+									updateStatus('Connection closed', 'info');
+									break;
+							}
+						};
+						
+						// Create offer to initiate connection
+						const offer = await peerConnection.createOffer({
+							offerToReceiveVideo: true,
+							offerToReceiveAudio: true
+						});
+						await peerConnection.setLocalDescription(offer);
+						
+						// Send offer to host through signaling server
+						socket.emit('offer', { offer: offer });
+						
+					} catch (err) {
+						console.error('Error connecting to host:', err);
+						updateStatus(`Error: ${err.message}`, 'error');
+						loading.style.display = 'none';
+						connectBtn.disabled = false;
+					}
+				}
+				
+				// Disconnect from host
+				function disconnect() {
+					if (peerConnection) {
+						peerConnection.close();
+						peerConnection = null;
+					}
+					
+					if (remoteVideo.srcObject) {
+						remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+						remoteVideo.srcObject = null;
+					}
+					
+					videoContainer.style.display = 'none';
+					loading.style.display = 'none';
+					connectBtn.style.display = 'inline-block';
+					connectBtn.disabled = false;
+					disconnectBtn.style.display = 'none';
+					
+					updateStatus('Disconnected', 'info');
+				}
+				
+				// Socket.IO event handlers
+				socket.on('connect', () => {
+					updateStatus('✓ Connected to server. Click "Connect to Stream" to start.', 'success');
+					connectBtn.disabled = false;
+				});
+				
+				socket.on('disconnect', () => {
+					updateStatus('Disconnected from server', 'error');
+					disconnect();
+				});
+				
+				// Handle answer from host
+				socket.on('answer', async (data) => {
+					if (peerConnection && data.answer) {
+						try {
+							await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+							console.log('Received answer from host');
+						} catch (err) {
+							console.error('Error handling answer:', err);
+						}
+					}
+				});
+				
+				// Handle ICE candidates from host
+				socket.on('ice-candidate', async (data) => {
+					if (peerConnection && data.candidate) {
+						try {
+							await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+						} catch (err) {
+							console.error('Error adding ICE candidate:', err);
+						}
+					}
+				});
+				
+				// Handle host disconnection
+				socket.on('peer-disconnected', (peerId) => {
+					console.log('Host disconnected');
+					updateStatus('Host stopped broadcasting', 'waiting');
+					disconnect();
+				});
+				
+				// Button event listeners
+				connectBtn.addEventListener('click', connectToHost);
+				disconnectBtn.addEventListener('click', disconnect);
+				
+				// Auto-connect on load if desired (optional)
+				// setTimeout(connectToHost, 1000);
+				
+			})();
+		</script>
 	</body>
 </html>
