@@ -1,180 +1,339 @@
 <!doctype html>
 <html>
 	<head>
-		<title>(HOST) Slide Sharing in Real Time</title>
-		
-		<script src="http://code.jquery.com/jquery-latest.js"></script>
-		<script src="/nowjs/now.js"></script>
-		<script>
-			$(function() {
-				now.ready(function() {
-					// we ensure jQuery and nowJS is initialized and ready by put the code in this context
-					
-					// get HTMl5 canvas handler
-					var c = document.getElementById("stage");
-					var ctx = c.getContext('2d');
-					// get HTML5 video handler
-					var v = document.getElementById("video");
-					// backing canva for video
-					var bc = document.createElement("canvas");
-					var bctx = bc.getContext('2d');
-					
-					// paint canva for drawing
-					var pc = document.createElement("canvas");
-					var pctx = pc.getContext('2d');
-					
-					
-					// to record if the video is playing or stopping
-					var videoPlayed = false;
-					
-					// trigger when the video is played
-					v.addEventListener("play", function() {
-						// mark this video is in playing mode
-						videoPlayed = true;
-						// re adjust the canvas width and height based on the video's one...
-						var w = v.clientWidth / 2;
-						var h = v.clientHeight / 2;
-						draw(this, ctx, w, h);
-					}, false);
-					
-					// trigger when the video is paused
-					v.addEventListener("pause", function() {
-						// mark this video is in not playing mode
-						videoPlayed = false;
-					}, false);
-					
-					// draw the video into HTML5 canvas
-					var draw = function(v, ctx, w, h) {
-						// if the video is not in playing, we not draw the screen
-						if(!videoPlayed) return;
-						
-						// re initialize the backing canvas
-						bctx.clearRect(0,0,w,h);
-						bctx.drawImage(v, 0, 0, w, h);
-						
-						// process bctx the backing canvas context
-						var bcxdata = bctx.getImageData(0, 0, w, h);
-						var bcdata = bcxdata.data;
-						for(var i = 0; i < bcdata.length; i+=4) {
-							
-							// modify the color pixels of the image data
-							
-							var r = bcdata[i];
-							var g = bcdata[i + 1];
-							var b = bcdata[i + 2];
-							
-							var isDirectManipulate = false;
-							
-							switch(algorithm) {
-								case 'brightness':
-								var brightness = (3 * r + 4 * g + b) >>> 3;
-								r = g = b = brightness;
-								break;
-								
-								case 'back':
-								r = 255 - r;
-								g = 255 - g;
-								b = 255 - b;
-								break;
-								
-								case 'emboss':
-								isDirectManipulate = true;
-								if( i%4 == 3 ) continue;
-      							  bcdata[i] = 127 + 2*bcdata[i] - bcdata[i + 4] - bcdata[i + w*4];
-								break;
-							}
-							
-							if(!isDirectManipulate) {
-								bcdata[i] 		= r;
-								bcdata[i + 1] 	= g;
-								bcdata[i + 2] 	= b;
-							}
-							
-						}
-						bcxdata.data = bcdata;
-						// then copy into main canva
-						ctx.putImageData(bcxdata, 0, 0);
-						
-						drawPath();
-						
-						broadcast(c);
-						
-						setTimeout(draw, 50, v, ctx, w, h);
-					};
-					
-					var broadcast = function(c) {
-						// broadcast this screen to client users
-						now.shareImage(c.toDataURL("image/png"));
-					};
-					
-					// algorithms
-					var algorithm = 'none';
-					
-					$("#algorithms").change(function() {
-						algorithm = $(this).val();
-					});
-					
-					// simple paint drawing code
-					var isMousedown = false;
-					
-					var startX = 0;
-					var startY = 0;
-					
-					var path = [];
-					$("#stage").mousedown(function(e) {
-						startX = e.clientX;
-						startY = e.clientY;
-						path[path.length] = {x: startX, y: startY};
-						isMousedown = true;	
-					});
-					
-					$("#stage").mouseup(function(e) {
-						isMousedown = false;
-					});
-					
-					$("#stage").mousemove(function(e) {
-						if(isMousedown) {
-							curX = e.clientX;
-							curY = e.clientY;
-							
-							path[path.length] = {x: curX, y:curY};
-						}
-					});
-					
-					
-					var drawPath = function() {
-						var w = c.clientWidth;
-						var h = c.clientHeight;
-						
-						
-						for(var i = 0; i < path.length; i++) {
-							var pas = path[i];
-							var px = pas.x;
-							var py = pas.y;
-							if(i == 0) {
-								ctx.moveTo(px, py);
-							} else {
-								ctx.lineTo(px, py);
-							}
-						}
-						ctx.stroke();
-						//path = [];
-					};
-				});
-			});
-		</script>
+		<title>(HOST) Real-time Video and Audio Sharing</title>
+		<meta charset="UTF-8">
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				margin: 20px;
+				background: #f0f0f0;
+			}
+			h1 {
+				color: #333;
+			}
+			.container {
+				max-width: 1200px;
+				margin: 0 auto;
+				background: white;
+				padding: 20px;
+				border-radius: 8px;
+				box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+			}
+			.video-container {
+				position: relative;
+				margin: 20px 0;
+			}
+			video {
+				width: 100%;
+				max-width: 640px;
+				border: 2px solid #333;
+				border-radius: 4px;
+				background: #000;
+			}
+			.controls {
+				margin: 20px 0;
+			}
+			button {
+				padding: 10px 20px;
+				font-size: 16px;
+				margin: 5px;
+				cursor: pointer;
+				background: #4CAF50;
+				color: white;
+				border: none;
+				border-radius: 4px;
+				transition: background 0.3s;
+			}
+			button:hover {
+				background: #45a049;
+			}
+			button:disabled {
+				background: #ccc;
+				cursor: not-allowed;
+			}
+			button.stop {
+				background: #f44336;
+			}
+			button.stop:hover {
+				background: #da190b;
+			}
+			.status {
+				padding: 10px;
+				margin: 10px 0;
+				border-radius: 4px;
+				background: #e3f2fd;
+				color: #1976d2;
+			}
+			.info {
+				margin: 20px 0;
+				padding: 15px;
+				background: #fff3cd;
+				border-left: 4px solid #ffc107;
+				border-radius: 4px;
+			}
+			select {
+				padding: 8px;
+				font-size: 14px;
+				margin: 5px;
+				border: 1px solid #ccc;
+				border-radius: 4px;
+			}
+		</style>
 	</head>
 	<body>
-		<canvas id="stage" width="600" height-"500">Your Browser not support HTML5 Canvas!</canvas>
-		<hr />
-		<video id="video" src="/static/video2.m4v" controls loop></video>
-		<br />
-		Algorithm:
-		<select id="algorithms">
-			<option value="none">None</option>
-			<option value="brightness">Brightness</option>
-			<option value="back">Back</option>
-			<option value="emboss">Emboss</option>
-		</select>
+		<div class="container">
+			<h1>🎥 Host - Real-time Video and Audio Sharing</h1>
+			
+			<div class="info">
+				<strong>Instructions:</strong>
+				<ol>
+					<li>Click "Start Webcam & Audio" to enable your camera and microphone</li>
+					<li>Once started, your video and audio will be broadcast to all connected viewers</li>
+					<li>Open the viewer page at <code>/</code> to see the stream</li>
+				</ol>
+			</div>
+			
+			<div class="status" id="status">Status: Not connected</div>
+			
+			<div class="controls">
+				<button id="startBtn">Start Webcam & Audio</button>
+				<button id="stopBtn" class="stop" disabled>Stop Broadcasting</button>
+			</div>
+			
+			<div class="video-container">
+				<video id="localVideo" autoplay muted playsinline aria-label="Local webcam preview"></video>
+			</div>
+			
+			<div class="controls">
+				<label for="videoSource">Camera:</label>
+				<select id="videoSource"></select>
+				
+				<label for="audioSource">Microphone:</label>
+				<select id="audioSource"></select>
+			</div>
+		</div>
+
+		<script src="/socket.io/socket.io.js"></script>
+		<script>
+			(function() {
+				const socket = io();
+				const localVideo = document.getElementById('localVideo');
+				const startBtn = document.getElementById('startBtn');
+				const stopBtn = document.getElementById('stopBtn');
+				const statusDiv = document.getElementById('status');
+				const videoSelect = document.getElementById('videoSource');
+				const audioSelect = document.getElementById('audioSource');
+				
+				let localStream = null;
+				let peerConnections = new Map();
+				const configuration = {
+					iceServers: [
+						{ urls: 'stun:stun.l.google.com:19302' },
+						{ urls: 'stun:stun1.l.google.com:19302' }
+					]
+				};
+				
+				// Update status
+				function updateStatus(message, isError = false) {
+					statusDiv.textContent = message;
+					statusDiv.style.background = isError ? '#ffebee' : '#e3f2fd';
+					statusDiv.style.color = isError ? '#c62828' : '#1976d2';
+					console.log(message);
+				}
+				
+				// Get available media devices and populate selects
+				async function getDevices() {
+					try {
+						const devices = await navigator.mediaDevices.enumerateDevices();
+						
+						const videoDevices = devices.filter(device => device.kind === 'videoinput');
+						const audioDevices = devices.filter(device => device.kind === 'audioinput');
+						
+						videoSelect.innerHTML = videoDevices.map((device, index) => 
+							`<option value="${device.deviceId}">${device.label || `Camera ${index + 1}`}</option>`
+						).join('');
+						
+						audioSelect.innerHTML = audioDevices.map((device, index) => 
+							`<option value="${device.deviceId}">${device.label || `Microphone ${index + 1}`}</option>`
+						).join('');
+					} catch (err) {
+						console.error('Error getting devices:', err);
+					}
+				}
+				
+				// Start local media stream
+				async function startStream() {
+					try {
+						updateStatus('Requesting camera and microphone access...');
+						
+						const constraints = {
+							video: {
+								deviceId: videoSelect.value ? { exact: videoSelect.value } : undefined,
+								width: { ideal: 1280 },
+								height: { ideal: 720 }
+							},
+							audio: {
+								deviceId: audioSelect.value ? { exact: audioSelect.value } : undefined,
+								echoCancellation: true,
+								noiseSuppression: true,
+								autoGainControl: true
+							}
+						};
+						
+						localStream = await navigator.mediaDevices.getUserMedia(constraints);
+						localVideo.srcObject = localStream;
+						
+						startBtn.disabled = true;
+						stopBtn.disabled = false;
+						videoSelect.disabled = true;
+						audioSelect.disabled = true;
+						
+						updateStatus('✓ Broadcasting - Waiting for viewers to connect...');
+						
+						// Register as host
+						socket.emit('register-host');
+						
+						// Refresh device list with labels
+						await getDevices();
+						
+					} catch (err) {
+						console.error('Error accessing media devices:', err);
+						updateStatus(`Error: ${err.message}. Please allow camera and microphone access.`, true);
+					}
+				}
+				
+				// Stop local stream
+				function stopStream() {
+					if (localStream) {
+						localStream.getTracks().forEach(track => track.stop());
+						localStream = null;
+						localVideo.srcObject = null;
+					}
+					
+					// Close all peer connections
+					peerConnections.forEach(pc => pc.close());
+					peerConnections.clear();
+					
+					startBtn.disabled = false;
+					stopBtn.disabled = true;
+					videoSelect.disabled = false;
+					audioSelect.disabled = false;
+					
+					updateStatus('Stopped broadcasting');
+				}
+				
+				// Create peer connection for a new viewer
+				async function createPeerConnection(viewerId) {
+					const pc = new RTCPeerConnection(configuration);
+					peerConnections.set(viewerId, pc);
+					
+					// Add local stream tracks to peer connection
+					if (localStream) {
+						localStream.getTracks().forEach(track => {
+							pc.addTrack(track, localStream);
+						});
+					}
+					
+					// Handle ICE candidates
+					pc.onicecandidate = (event) => {
+						if (event.candidate) {
+							socket.emit('ice-candidate', {
+								target: viewerId,
+								candidate: event.candidate
+							});
+						}
+					};
+					
+					// Handle connection state
+					pc.onconnectionstatechange = () => {
+						console.log(`Connection state with ${viewerId}: ${pc.connectionState}`);
+						if (pc.connectionState === 'connected') {
+							updateStatus(`✓ Broadcasting to ${peerConnections.size} viewer(s)`);
+						}
+					};
+					
+					return pc;
+				}
+				
+				// Socket.IO event handlers
+				socket.on('connect', () => {
+					updateStatus('✓ Connected to server');
+					getDevices();
+				});
+				
+				socket.on('disconnect', () => {
+					updateStatus('Disconnected from server', true);
+				});
+				
+				// Handle offer from viewer (viewer-initiated connection)
+				socket.on('offer', async (data) => {
+					if (!localStream) return;
+					
+					try {
+						const pc = await createPeerConnection(data.sender);
+						await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+						
+						const answer = await pc.createAnswer();
+						await pc.setLocalDescription(answer);
+						
+						socket.emit('answer', {
+							target: data.sender,
+							answer: answer
+						});
+						
+						updateStatus(`✓ Broadcasting to ${peerConnections.size} viewer(s)`);
+					} catch (err) {
+						console.error('Error handling offer:', err);
+					}
+				});
+				
+				// Handle ICE candidates from viewers
+				socket.on('ice-candidate', async (data) => {
+					const pc = peerConnections.get(data.sender);
+					if (pc && data.candidate) {
+						try {
+							await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+						} catch (err) {
+							console.error('Error adding ICE candidate:', err);
+						}
+					}
+				});
+				
+				// Handle viewer disconnection
+				socket.on('peer-disconnected', (peerId) => {
+					const pc = peerConnections.get(peerId);
+					if (pc) {
+						pc.close();
+						peerConnections.delete(peerId);
+						updateStatus(`Viewer disconnected. Broadcasting to ${peerConnections.size} viewer(s)`);
+					}
+				});
+				
+				// Button event listeners
+				startBtn.addEventListener('click', startStream);
+				stopBtn.addEventListener('click', stopStream);
+				
+				// Device selection change handlers
+				videoSelect.addEventListener('change', () => {
+					if (localStream) {
+						stopStream();
+						startStream();
+					}
+				});
+				
+				audioSelect.addEventListener('change', () => {
+					if (localStream) {
+						stopStream();
+						startStream();
+					}
+				});
+				
+				// Cleanup on page unload
+				window.addEventListener('beforeunload', () => {
+					stopStream();
+				});
+			})();
+		</script>
 	</body>
 </html>
